@@ -30,8 +30,8 @@ const FETCH_PROFILES_SQL =
   "select url from apple_podcasts.not_scraped_profiles_vw";
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
-const INSERT_PROFILE_SQL_WITHOUT_RATE =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, category) values ($1, $2, $3, $4, $5)`;
+const INSERT_PROFILE_SQL =
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)`;
 
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -241,9 +241,9 @@ async function saveProfile(pool, profile, { insertSql }) {
       normalizeField(profile.hostName),
       normalizeField(profile.showDescription),
       normalizeField(profile.reviews),
+      normalizeField(profile.rate),
+      normalizeField(profile.category),
     ];
-
-    values.push(normalizeField(profile.category));
 
     await client.query(insertSql, values);
     await client.query("COMMIT");
@@ -276,7 +276,7 @@ async function main() {
     const urls = await loadProfiles(pool);
 
     const insertConfig = {
-      insertSql: INSERT_PROFILE_SQL_WITHOUT_RATE,
+      insertSql: INSERT_PROFILE_SQL,
     };
 
     if (!urls.length) {
