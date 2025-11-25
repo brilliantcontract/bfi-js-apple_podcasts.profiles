@@ -192,10 +192,11 @@ function extractProfileFields(html) {
   );
   const hostName = cleanText(
     document.querySelector(".headings__subtitles .svelte-123qhuj")?.textContent ||
-      ""
+      document.querySelector(".headings.svelte-1uuona0 .subtitle-action.svelte-16t2ez2")?.textContent || ""
   );
   const showDescription = cleanText(
-    document.querySelector(".description .truncate-wrapper p")?.textContent || ""
+    document.querySelector(".description .truncate-wrapper p")?.textContent ||
+      document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
   );
 
   const metadataText = cleanText(
@@ -203,6 +204,7 @@ function extractProfileFields(html) {
       ?.textContent || ""
   );
   const { reviews, rate } = parseReviewsAndRate(metadataText);
+  console.log(reviews, rate)
 
   const category = cleanText(
     document.querySelector(".metadata.svelte-123qhuj li:nth-child(2)")
