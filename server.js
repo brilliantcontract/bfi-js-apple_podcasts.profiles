@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import { JSDOM } from "jsdom";
 import { Pool } from "pg";
 
 dotenv.config();
@@ -11,9 +12,6 @@ const __dirname = path.dirname(__filename);
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const HEADERS_FILE = path.join(DATA_DIR, "headers.json");
-
-const API_URL =
-  "https://amp-api.podcasts.apple.com/v1/catalog/us/search/groups";
 
 const SCRAPE_NINJA_ENDPOINT = "https://scrapeninja.p.rapidapi.com/scrape";
 const SCRAPE_NINJA_HOST = "scrapeninja.p.rapidapi.com";
@@ -28,40 +26,26 @@ const DB_CONFIG = {
   database: process.env.DB_NAME || "scrapers",
 };
 
-const FETCH_QUERIES_SQL =
-  "select query from apple_podcasts.not_scraped_queries_vw";
-const INSERT_SEARCH_SQL =
-  "insert into apple_podcasts.searches(author_name, profile_title, query, url) values ($1, $2, $3, $4)";
-
-function buildAuthorizationHeader(value) {
-  if (!value || typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim();
-  return trimmed.toLowerCase().startsWith("bearer")
-    ? trimmed
-    : `Bearer ${trimmed}`;
-}
+const FETCH_PROFILES_SQL =
+  "select url from apple_podcasts.not_scraped_profiles_vw";
+const INSERT_PROFILE_SQL =
+  "insert into apple_podcasts.profiles(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)";
 
 const DEFAULT_HEADERS = {
-  accept: "*/*",
-  "accept-language": "en-US,en;q=0.9,ru;q=0.8,uk;q=0.7",
-  authorization: buildAuthorizationHeader(process.env.APPLE_AUTHORIZATION),
-  cookie: "geo=UA",
-  origin: "https://podcasts.apple.com",
-  priority: "u=1, i",
-  referer: "https://podcasts.apple.com/",
-  "sec-ch-ua":
-    '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": '"Windows"',
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-site",
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "accept-language": "en-US,en;q=0.5",
+  "accept-encoding": "deflate",
+  connection: "keep-alive",
+  cookie: "geo=UA; geo=UA",
+  "upgrade-insecure-requests": "1",
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "none",
+  "if-none-match": '"I+YQARDtedeoXRsCMXBPLv+zmt8MEws33ZxExP9eEpQ="',
+  priority: "u=0, i",
   "user-agent":
     process.env.USER_AGENT ||
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
 };
 
 async function ensureDataDir() {
@@ -93,7 +77,9 @@ function buildRequestHeaders(overrides) {
   });
 
   return Object.fromEntries(
-    Object.entries(headers).map(([key, value]) => [key, value]).filter(([, value]) => value !== "")
+    Object.entries(headers)
+      .map(([key, value]) => [key, value])
+      .filter(([, value]) => value !== "")
   );
 }
 
@@ -125,7 +111,7 @@ async function fetchViaScrapeNinja(url, headers) {
       url,
       method: "GET",
       headers,
-      autoparse: true,
+      autoparse: false,
     }),
   });
 
@@ -137,126 +123,15 @@ async function fetchViaScrapeNinja(url, headers) {
   }
 
   const payload = await response.json();
-  let parsedBody = payload?.body;
 
-  if (typeof parsedBody === "string") {
-    try {
-      parsedBody = JSON.parse(parsedBody);
-    } catch (error) {
-      throw new Error(
-        `ScrapeNinja returned a non-JSON body: ${parsedBody.slice(0, 200)}`
-      );
-    }
+  if (!payload?.body || typeof payload.body !== "string") {
+    throw new Error("ScrapeNinja response did not include a string body.");
   }
 
-  if (!parsedBody) {
-    throw new Error("ScrapeNinja response did not include a body.");
-  }
-
-  return parsedBody;
+  return payload.body;
 }
 
-function validateAuthHeaders(headers) {
-  if (!headers.authorization) {
-    throw new Error(
-      "authorization (Bearer token) is required. Supply APPLE_AUTHORIZATION env var or data/headers.json"
-    );
-  }
-}
-
-function buildSearchUrl(query) {
-  const url = new URL(API_URL);
-  const params = {
-    platform: "web",
-    "extend": "editorialArtwork,feedUrl",
-    "extend[podcast-channels]": "availableShowCount",
-    "extend[podcasts]": "editorialArtwork",
-    "include[podcast-episodes]": "channel,podcast",
-    "include[podcasts]": "channel",
-    limit: "25",
-    groups: "category,channel,episode,show,top",
-    with: "entitlements,transcripts",
-    types: "podcasts,podcast-channels,podcast-episodes,categories,editorial-items",
-    term: query,
-    l: "en-US",
-  };
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (typeof value === "string") {
-      url.searchParams.set(key, value);
-    }
-  });
-
-  return url.toString();
-}
-
-function parseProfiles(responseJson, query) {
-  if (Array.isArray(responseJson?.errors) && responseJson.errors.length) {
-    const message = responseJson.errors
-      .map((error) =>
-        typeof error?.message === "string" ? error.message.trim() : ""
-      )
-      .filter(Boolean)
-      .join("; ");
-
-    throw new Error(message || "Apple Podcasts API returned an error response.");
-  }
-
-  const seen = new Set();
-
-  const extractProfile = (attributes) => {
-    if (!attributes || typeof attributes !== "object") {
-      return null;
-    }
-
-    const url = typeof attributes.url === "string" ? attributes.url : "";
-
-    if (!url || seen.has(url)) {
-      return null;
-    }
-
-    const authorName =
-      typeof attributes.artistName === "string" ? attributes.artistName : "";
-    const profileTitle =
-      typeof attributes.name === "string" ? attributes.name : "";
-
-    seen.add(url);
-    return { authorName, profileTitle, query, url };
-  };
-
-  const candidateProfiles = [];
-
-  const collectAttributes = (value) => {
-    if (!value || typeof value !== "object") {
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach((item) => collectAttributes(item));
-      return;
-    }
-
-    if (value.attributes) {
-      const profile = extractProfile(value.attributes);
-      if (profile) {
-        candidateProfiles.push(profile);
-      }
-    }
-
-    Object.values(value).forEach((child) => {
-      if (typeof child === "object") {
-        collectAttributes(child);
-      }
-    });
-  };
-
-  collectAttributes(responseJson);
-
-  return candidateProfiles;
-}
-
-async function fetchSearchResults(headers, query) {
-  const url = buildSearchUrl(query);
+async function fetchProfileHtml(url, headers) {
   if (shouldUseScrapeNinja()) {
     return fetchViaScrapeNinja(url, headers);
   }
@@ -270,38 +145,102 @@ async function fetchSearchResults(headers, query) {
     );
   }
 
-  return response.json();
+  return response.text();
 }
 
-async function loadQueries(pool) {
-  const { rows } = await pool.query(FETCH_QUERIES_SQL);
+function cleanText(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function parseReviewsAndRate(metadataText) {
+  const cleaned = cleanText(metadataText);
+
+  if (!cleaned) {
+    return { reviews: "", rate: "" };
+  }
+
+  const parenMatch = cleaned.match(/([0-9]+(?:\.[0-9]+)?)\s*\(([^)]+)\)/);
+  if (parenMatch) {
+    return { reviews: parenMatch[1], rate: parenMatch[2] };
+  }
+
+  const numberMatches = cleaned.match(/([0-9]+(?:\.[0-9]+)?)/g) || [];
+  if (numberMatches.length >= 2) {
+    return { reviews: numberMatches[0], rate: numberMatches[1] };
+  }
+
+  return {
+    reviews: numberMatches[0] || cleaned,
+    rate: "",
+  };
+}
+
+function extractProfileFields(html) {
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+
+  const showName = cleanText(
+    document.querySelector(".headings.svelte-1uuona0 h1")?.textContent || ""
+  );
+  const hostName = cleanText(
+    document.querySelector(".headings__subtitles .svelte-123qhuj")?.textContent ||
+      ""
+  );
+  const showDescription = cleanText(
+    document.querySelector(".description .truncate-wrapper p")?.textContent || ""
+  );
+
+  const metadataText = cleanText(
+    document.querySelector(".metadata.svelte-123qhuj li:nth-child(1)")
+      ?.textContent || ""
+  );
+  const { reviews, rate } = parseReviewsAndRate(metadataText);
+
+  const category = cleanText(
+    document.querySelector(".metadata.svelte-123qhuj li:nth-child(2)")
+      ?.textContent || ""
+  );
+
+  return { showName, hostName, showDescription, reviews, rate, category };
+}
+
+function normalizeField(value) {
+  const cleaned = cleanText(value);
+  return cleaned === "" ? null : cleaned;
+}
+
+function validateProfile(profile, url) {
+  if (!profile.showName) {
+    throw new Error(`Missing show name for profile ${url}`);
+  }
+}
+
+async function loadProfiles(pool) {
+  const { rows } = await pool.query(FETCH_PROFILES_SQL);
 
   return rows
-    .map((row) => (row && typeof row.query === "string" ? row.query.trim() : ""))
+    .map((row) => (row && typeof row.url === "string" ? row.url.trim() : ""))
     .filter((value) => value !== "");
 }
 
-async function saveProfiles(pool, profiles) {
-  if (!profiles.length) {
-    return 0;
-  }
-
+async function saveProfile(pool, profile) {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
-
-    for (const profile of profiles) {
-      await client.query(INSERT_SEARCH_SQL, [
-        profile.authorName,
-        profile.profileTitle,
-        profile.query,
-        profile.url,
-      ]);
-    }
-
+    await client.query(INSERT_PROFILE_SQL, [
+      normalizeField(profile.showName),
+      normalizeField(profile.hostName),
+      normalizeField(profile.showDescription),
+      normalizeField(profile.reviews),
+      normalizeField(profile.rate),
+      normalizeField(profile.category),
+    ]);
     await client.query("COMMIT");
-    return profiles.length;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -310,40 +249,39 @@ async function saveProfiles(pool, profiles) {
   }
 }
 
+async function processProfile(pool, url, headers) {
+  const html = await fetchProfileHtml(url, headers);
+  const profile = extractProfileFields(html);
+
+  validateProfile(profile, url);
+
+  await saveProfile(pool, profile);
+}
+
 async function main() {
   await ensureDataDir();
 
   const headerOverrides = await loadHeaderOverrides();
   const headers = buildRequestHeaders(headerOverrides);
 
-  validateAuthHeaders(headers);
-
   const pool = new Pool(DB_CONFIG);
 
   try {
-    const queries = await loadQueries(pool);
+    const urls = await loadProfiles(pool);
 
-    if (!queries.length) {
-      console.warn("No queries found to process.");
+    if (!urls.length) {
+      console.warn("No profiles found to process.");
       return;
     }
 
-    console.log(`Processing ${queries.length} quer${queries.length === 1 ? "y" : "ies"}.`);
+    console.log(`Processing ${urls.length} profile${urls.length === 1 ? "" : "s"}.`);
 
-    for (const query of queries) {
+    for (const url of urls) {
       try {
-        const responseJson = await fetchSearchResults(headers, query);
-        const profiles = parseProfiles(responseJson, query);
-        
-        if (!profiles.length) {
-          console.warn(`No profiles returned for query: ${query}`);
-          continue;
-        }
-
-        const inserted = await saveProfiles(pool, profiles);
-        console.log(`Saved ${inserted} profile${inserted === 1 ? "" : "s"} for query "${query}".`);
+        await processProfile(pool, url, headers);
+        console.log(`Saved profile from ${url}`);
       } catch (error) {
-        console.error(`Failed to process query "${query}": ${error.message}`);
+        console.error(`Failed to process profile ${url}: ${error.message}`);
       }
     }
   } finally {
