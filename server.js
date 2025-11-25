@@ -202,7 +202,6 @@ function extractProfileFields(html) {
       ?.textContent || ""
   );
   const { reviews, rate } = parseReviewsAndRate(metadataText);
-  console.log(reviews, rate)
 
   const category = cleanText(
     document.querySelector(".metadata.svelte-123qhuj li:nth-child(2)")
