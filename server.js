@@ -30,8 +30,6 @@ const FETCH_PROFILES_SQL =
   "select url from apple_podcasts.not_scraped_profiles_vw";
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
-const INSERT_PROFILE_SQL_WITH_RATE =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)`;
 const INSERT_PROFILE_SQL_WITHOUT_RATE =
   `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, category) values ($1, $2, $3, $4, $5)`;
 
@@ -233,17 +231,7 @@ async function loadProfiles(pool) {
     .filter((value) => value !== "");
 }
 
-async function tableHasRateColumn(pool) {
-  const query = {
-    text: `select 1 from information_schema.columns where table_schema = $1 and table_name = $2 and column_name = 'rate' limit 1`,
-    values: [PROFILE_TABLE_SCHEMA, PROFILE_TABLE_NAME],
-  };
-
-  const { rowCount } = await pool.query(query);
-  return rowCount > 0;
-}
-
-async function saveProfile(pool, profile, { insertSql, includeRate }) {
+async function saveProfile(pool, profile, { insertSql }) {
   const client = await pool.connect();
 
   try {
@@ -254,10 +242,6 @@ async function saveProfile(pool, profile, { insertSql, includeRate }) {
       normalizeField(profile.showDescription),
       normalizeField(profile.reviews),
     ];
-
-    if (includeRate) {
-      values.push(normalizeField(profile.rate));
-    }
 
     values.push(normalizeField(profile.category));
 
@@ -289,16 +273,10 @@ async function main() {
   const pool = new Pool(DB_CONFIG);
 
   try {
-    const [urls, includeRate] = await Promise.all([
-      loadProfiles(pool),
-      tableHasRateColumn(pool),
-    ]);
+    const urls = await loadProfiles(pool);
 
     const insertConfig = {
-      includeRate,
-      insertSql: includeRate
-        ? INSERT_PROFILE_SQL_WITH_RATE
-        : INSERT_PROFILE_SQL_WITHOUT_RATE,
+      insertSql: INSERT_PROFILE_SQL_WITHOUT_RATE,
     };
 
     if (!urls.length) {
