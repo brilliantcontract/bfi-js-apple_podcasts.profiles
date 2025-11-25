@@ -28,8 +28,12 @@ const DB_CONFIG = {
 
 const FETCH_PROFILES_SQL =
   "select url from apple_podcasts.not_scraped_profiles_vw";
-const INSERT_PROFILE_SQL =
-  "insert into apple_podcasts.profiles(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)";
+const PROFILE_TABLE_SCHEMA = "apple_podcasts";
+const PROFILE_TABLE_NAME = "profiles";
+const INSERT_PROFILE_SQL_WITH_RATE =
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)`;
+const INSERT_PROFILE_SQL_WITHOUT_RATE =
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, category) values ($1, $2, $3, $4, $5)`;
 
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -227,19 +231,35 @@ async function loadProfiles(pool) {
     .filter((value) => value !== "");
 }
 
-async function saveProfile(pool, profile) {
+async function tableHasRateColumn(pool) {
+  const query = {
+    text: `select 1 from information_schema.columns where table_schema = $1 and table_name = $2 and column_name = 'rate' limit 1`,
+    values: [PROFILE_TABLE_SCHEMA, PROFILE_TABLE_NAME],
+  };
+
+  const { rowCount } = await pool.query(query);
+  return rowCount > 0;
+}
+
+async function saveProfile(pool, profile, { insertSql, includeRate }) {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
-    await client.query(INSERT_PROFILE_SQL, [
+    const values = [
       normalizeField(profile.showName),
       normalizeField(profile.hostName),
       normalizeField(profile.showDescription),
       normalizeField(profile.reviews),
-      normalizeField(profile.rate),
-      normalizeField(profile.category),
-    ]);
+    ];
+
+    if (includeRate) {
+      values.push(normalizeField(profile.rate));
+    }
+
+    values.push(normalizeField(profile.category));
+
+    await client.query(insertSql, values);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -249,13 +269,13 @@ async function saveProfile(pool, profile) {
   }
 }
 
-async function processProfile(pool, url, headers) {
+async function processProfile(pool, url, headers, insertConfig) {
   const html = await fetchProfileHtml(url, headers);
   const profile = extractProfileFields(html);
 
   validateProfile(profile, url);
 
-  await saveProfile(pool, profile);
+  await saveProfile(pool, profile, insertConfig);
 }
 
 async function main() {
@@ -267,7 +287,17 @@ async function main() {
   const pool = new Pool(DB_CONFIG);
 
   try {
-    const urls = await loadProfiles(pool);
+    const [urls, includeRate] = await Promise.all([
+      loadProfiles(pool),
+      tableHasRateColumn(pool),
+    ]);
+
+    const insertConfig = {
+      includeRate,
+      insertSql: includeRate
+        ? INSERT_PROFILE_SQL_WITH_RATE
+        : INSERT_PROFILE_SQL_WITHOUT_RATE,
+    };
 
     if (!urls.length) {
       console.warn("No profiles found to process.");
@@ -278,7 +308,7 @@ async function main() {
 
     for (const url of urls) {
       try {
-        await processProfile(pool, url, headers);
+        await processProfile(pool, url, headers, insertConfig);
         console.log(`Saved profile from ${url}`);
       } catch (error) {
         console.error(`Failed to process profile ${url}: ${error.message}`);
