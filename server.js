@@ -167,17 +167,17 @@ function parseReviewsAndRate(metadataText) {
 
   const parenMatch = cleaned.match(/([0-9]+(?:\.[0-9]+)?)\s*\(([^)]+)\)/);
   if (parenMatch) {
-    return { reviews: parenMatch[1], rate: parenMatch[2] };
+    return { rate: parenMatch[1], reviews: parenMatch[2] };
   }
 
   const numberMatches = cleaned.match(/([0-9]+(?:\.[0-9]+)?)/g) || [];
   if (numberMatches.length >= 2) {
-    return { reviews: numberMatches[0], rate: numberMatches[1] };
+    return { rate: numberMatches[0], reviews: numberMatches[1] };
   }
 
   return {
-    reviews: numberMatches[0] || cleaned,
-    rate: "",
+    rate: numberMatches[0] || "",
+    reviews: cleaned,
   };
 }
 
