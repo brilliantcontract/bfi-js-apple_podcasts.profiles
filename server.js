@@ -31,7 +31,7 @@ const FETCH_PROFILES_SQL =
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
 const INSERT_PROFILE_SQL =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, reviews, rate, category) values ($1, $2, $3, $4, $5, $6)`;
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7)`;
 
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -83,6 +83,17 @@ function buildRequestHeaders(overrides) {
       .map(([key, value]) => [key, value])
       .filter(([, value]) => value !== "")
   );
+}
+
+function extractLinksFromDescription(description) {
+  if (typeof description !== "string" || description.trim() === "") {
+    return "";
+  }
+
+  const urlRegex = /https?:\/\/[^\s"']+/gi;
+  const matches = description.match(urlRegex) || [];
+
+  return matches.join("◙");
 }
 
 function shouldUseScrapeNinja() {
@@ -197,6 +208,8 @@ function extractProfileFields(html) {
       document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
   );
 
+  const links = extractLinksFromDescription(showDescription);
+
   const metadataText = cleanText(
     document.querySelector(".metadata.svelte-123qhuj li:nth-child(1)")
       ?.textContent || ""
@@ -208,7 +221,7 @@ function extractProfileFields(html) {
       ?.textContent || ""
   );
 
-  return { showName, hostName, showDescription, reviews, rate, category };
+  return { showName, hostName, showDescription, links, reviews, rate, category };
 }
 
 function normalizeField(value) {
@@ -239,6 +252,7 @@ async function saveProfile(pool, profile, { insertSql }) {
       normalizeField(profile.showName),
       normalizeField(profile.hostName),
       normalizeField(profile.showDescription),
+      normalizeField(profile.links),
       normalizeField(profile.reviews),
       normalizeField(profile.rate),
       normalizeField(profile.category),
