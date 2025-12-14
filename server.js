@@ -91,9 +91,11 @@ function extractLinksFromDescription(description) {
   }
 
   const urlRegex1 = /https?:\/\/[^\s"']+/gi;
-  const urlRegex2 = /www?\/\/[^\s"']+/gi;
-  const matches = description.match(urlRegex1) || [];
-  matches = description.match(urlRegex2) || [];
+  const urlRegex2 = /www\.[^\s"']+/gi;
+  const matches = [
+    ...(description.match(urlRegex1) || []),
+    ...(description.match(urlRegex2) || []),
+  ];
 
   return matches.join("◙");
 }
