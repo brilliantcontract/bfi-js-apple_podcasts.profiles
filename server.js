@@ -89,7 +89,7 @@ function extractLinksFromDescription(description) {
   if (typeof description !== "string" || description.trim() === "") {
     return "";
   }
-www.sixfigureauthorexperiment.com
+
   const urlRegex1 = /https?:\/\/[^\s"']+/gi;
   const urlRegex2 = /www?\/\/[^\s"']+/gi;
   const matches = description.match(urlRegex1) || [];
