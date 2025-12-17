@@ -27,11 +27,11 @@ const DB_CONFIG = {
 };
 
 const FETCH_PROFILES_SQL =
-  "select url from apple_podcasts.not_scraped_profiles_vw";
+  "select url, search_id from apple_podcasts.not_scraped_profiles_vw";
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
 const INSERT_PROFILE_SQL =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(url, show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7, $8)`;
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(search_id, url, show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
 
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -277,8 +277,19 @@ async function loadProfiles(pool) {
   const { rows } = await pool.query(FETCH_PROFILES_SQL);
 
   return rows
-    .map((row) => (row && typeof row.url === "string" ? row.url.trim() : ""))
-    .filter((value) => value !== "");
+    .map((row) => {
+      const url = row && typeof row.url === "string" ? row.url.trim() : "";
+      const rawSearchId = row?.search_id ?? row?.searchId;
+      const searchId =
+        rawSearchId === undefined || rawSearchId === null
+          ? null
+          : typeof rawSearchId === "string" && rawSearchId.trim() === ""
+            ? null
+            : rawSearchId;
+
+      return { url, searchId };
+    })
+    .filter(({ url }) => url !== "");
 }
 
 async function saveProfile(pool, profile, { insertSql }) {
@@ -287,6 +298,7 @@ async function saveProfile(pool, profile, { insertSql }) {
   try {
     await client.query("BEGIN");
     const values = [
+      profile.searchId ?? null,
       normalizeField(profile.url),
       normalizeField(profile.showName),
       normalizeField(profile.hostName),
@@ -307,11 +319,12 @@ async function saveProfile(pool, profile, { insertSql }) {
   }
 }
 
-async function processProfile(pool, url, headers, insertConfig) {
-  const html = await fetchProfileHtml(url, headers);
-  const profile = extractProfileFields(html, url);
+async function processProfile(pool, profileRequest, headers, insertConfig) {
+  const html = await fetchProfileHtml(profileRequest.url, headers);
+  const extractedProfile = extractProfileFields(html, profileRequest.url);
+  const profile = { ...extractedProfile, searchId: profileRequest.searchId }; 
 
-  validateProfile(profile, url);
+  validateProfile(profile, profileRequest.url);
 
   await saveProfile(pool, profile, insertConfig);
 }
@@ -325,25 +338,29 @@ async function main() {
   const pool = new Pool(DB_CONFIG);
 
   try {
-    const urls = await loadProfiles(pool);
+    const profiles = await loadProfiles(pool);
 
     const insertConfig = {
       insertSql: INSERT_PROFILE_SQL,
     };
 
-    if (!urls.length) {
+    if (!profiles.length) {
       console.warn("No profiles found to process.");
       return;
     }
 
-    console.log(`Processing ${urls.length} profile${urls.length === 1 ? "" : "s"}.`);
+    console.log(
+      `Processing ${profiles.length} profile${profiles.length === 1 ? "" : "s"}.`
+    );
 
-    for (const url of urls) {
+    for (const profile of profiles) {
       try {
-        await processProfile(pool, url, headers, insertConfig);
-        console.log(`Saved profile from ${url}`);
+        await processProfile(pool, profile, headers, insertConfig);
+        console.log(`Saved profile from ${profile.url}`);
       } catch (error) {
-        console.error(`Failed to process profile ${url}: ${error.message}`);
+        console.error(
+          `Failed to process profile ${profile.url}: ${error.message}`
+        );
       }
     }
   } finally {
