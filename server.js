@@ -50,6 +50,27 @@ const DEFAULT_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
 };
 
+const EXCLUDED_DOMAINS = ["patreon.com", "speaker.com"];
+
+function skipDomains(url) {
+  if (typeof url !== "string" || url.trim() === "") {
+    return false;
+  }
+
+  const value = url.trim();
+  const normalized = value.match(/^https?:\/\//i) ? value : `https://${value}`;
+
+  try {
+    const hostname = new URL(normalized).hostname.toLowerCase();
+
+    return EXCLUDED_DOMAINS.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
 async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 }
@@ -97,7 +118,7 @@ function extractLinksFromDescription(description) {
     ...(description.match(urlRegex2) || []),
   ];
 
-  return matches.join("◙");
+  return matches.filter((url) => !skipDomains(url)).join("◙");
 }
 
 function shouldUseScrapeNinja() {
