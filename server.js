@@ -33,6 +33,25 @@ const PROFILE_TABLE_NAME = "profiles";
 const INSERT_PROFILE_SQL =
   `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(search_id, url, show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
 
+/**
+ * @typedef {Object} ProfileRequest
+ * @property {string} url
+ * @property {string | number | null} [searchId]
+ */
+
+/**
+ * @typedef {Object} Profile
+ * @property {string | number | null} searchId
+ * @property {string} url
+ * @property {string} showName
+ * @property {string} hostName
+ * @property {string} showDescription
+ * @property {string} links
+ * @property {string} reviews
+ * @property {string} rate
+ * @property {string} category
+ */
+
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "accept-language": "en-US,en;q=0.5",
@@ -194,6 +213,19 @@ function cleanText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeSearchId(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+
+  return value;
+}
+
 function parseReviewsAndRate(metadataText) {
   const cleaned = cleanText(metadataText);
 
@@ -273,6 +305,10 @@ function validateProfile(profile, url) {
   }
 }
 
+/**
+ * @param {import("pg").Pool} pool
+ * @returns {Promise<ProfileRequest[]>}
+ */
 async function loadProfiles(pool) {
   const { rows } = await pool.query(FETCH_PROFILES_SQL);
 
@@ -280,18 +316,18 @@ async function loadProfiles(pool) {
     .map((row) => {
       const url = row && typeof row.url === "string" ? row.url.trim() : "";
       const rawSearchId = row?.search_id ?? row?.searchId;
-      const searchId =
-        rawSearchId === undefined || rawSearchId === null
-          ? null
-          : typeof rawSearchId === "string" && rawSearchId.trim() === ""
-            ? null
-            : rawSearchId;
+      const searchId = normalizeSearchId(rawSearchId);
 
       return { url, searchId };
     })
     .filter(({ url }) => url !== "");
 }
 
+/**
+ * @param {import("pg").Pool} pool
+ * @param {Profile} profile
+ * @param {{ insertSql: string }} param2
+ */
 async function saveProfile(pool, profile, { insertSql }) {
   const client = await pool.connect();
 
@@ -319,10 +355,16 @@ async function saveProfile(pool, profile, { insertSql }) {
   }
 }
 
+/**
+ * @param {import("pg").Pool} pool
+ * @param {ProfileRequest} profileRequest
+ * @param {Record<string, string>} headers
+ * @param {{ insertSql: string }} insertConfig
+ */
 async function processProfile(pool, profileRequest, headers, insertConfig) {
   const html = await fetchProfileHtml(profileRequest.url, headers);
   const extractedProfile = extractProfileFields(html, profileRequest.url);
-  const profile = { ...extractedProfile, searchId: profileRequest.searchId }; 
+  const profile = { ...extractedProfile, searchId: profileRequest.searchId };
 
   validateProfile(profile, profileRequest.url);
 
