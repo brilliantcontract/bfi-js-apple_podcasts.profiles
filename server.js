@@ -31,7 +31,7 @@ const FETCH_PROFILES_SQL =
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
 const INSERT_PROFILE_SQL =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7)`;
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(url, show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7, $8)`;
 
 const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -217,7 +217,7 @@ function parseReviewsAndRate(metadataText) {
   };
 }
 
-function extractProfileFields(html) {
+function extractProfileFields(html, url) {
   const dom = new JSDOM(html);
   const document = dom.window.document;
 
@@ -246,7 +246,16 @@ function extractProfileFields(html) {
       ?.textContent || ""
   );
 
-  return { showName, hostName, showDescription, links, reviews, rate, category };
+  return {
+    url: cleanText(url),
+    showName,
+    hostName,
+    showDescription,
+    links,
+    reviews,
+    rate,
+    category,
+  };
 }
 
 function normalizeField(value) {
@@ -257,6 +266,10 @@ function normalizeField(value) {
 function validateProfile(profile, url) {
   if (!profile.showName) {
     throw new Error(`Missing show name for profile ${url}`);
+  }
+
+  if (!profile.url) {
+    throw new Error(`Missing profile URL for profile ${url}`);
   }
 }
 
@@ -274,6 +287,7 @@ async function saveProfile(pool, profile, { insertSql }) {
   try {
     await client.query("BEGIN");
     const values = [
+      normalizeField(profile.url),
       normalizeField(profile.showName),
       normalizeField(profile.hostName),
       normalizeField(profile.showDescription),
@@ -295,7 +309,7 @@ async function saveProfile(pool, profile, { insertSql }) {
 
 async function processProfile(pool, url, headers, insertConfig) {
   const html = await fetchProfileHtml(url, headers);
-  const profile = extractProfileFields(html);
+  const profile = extractProfileFields(html, url);
 
   validateProfile(profile, url);
 
