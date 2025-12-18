@@ -31,7 +31,7 @@ const FETCH_PROFILES_SQL =
 const PROFILE_TABLE_SCHEMA = "apple_podcasts";
 const PROFILE_TABLE_NAME = "profiles";
 const INSERT_PROFILE_SQL =
-  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(search_id, url, show_name, host_name, show_description, links, reviews, rate, category) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
+  `insert into ${PROFILE_TABLE_SCHEMA}.${PROFILE_TABLE_NAME}(search_id, url, show_name, host_name, show_description, links, reviews, rate, category, episode_description) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`;
 
 /**
  * @typedef {Object} ProfileRequest
@@ -50,6 +50,7 @@ const INSERT_PROFILE_SQL =
  * @property {string} reviews
  * @property {string} rate
  * @property {string} category
+ * @property {string} episodeDescription
  */
 
 const DEFAULT_HEADERS = {
@@ -249,10 +250,7 @@ function parseReviewsAndRate(metadataText) {
   };
 }
 
-function extractProfileFields(html, url) {
-  const dom = new JSDOM(html);
-  const document = dom.window.document;
-
+function extractProfileFields(document, url) {
   const showName = cleanText(
     document.querySelector(".headings.svelte-1uuona0 h1")?.textContent || ""
   );
@@ -288,6 +286,40 @@ function extractProfileFields(html, url) {
     rate,
     category,
   };
+}
+
+function extractEpisodeLink(document, baseUrl) {
+  const rawLink =
+    document
+      .querySelector("div.shelf-content > ol > li:nth-child(1) > div > a[href]")
+      ?.getAttribute("href") || "";
+
+  if (!rawLink.trim()) {
+    return "";
+  }
+
+  try {
+    return new URL(rawLink, baseUrl).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
+function extractEpisodeDescription(html) {
+  if (!html) {
+    return "";
+  }
+
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+
+  return (
+    document
+      .querySelector(
+        "div.section.section--paragraph.svelte-1cj8vg9.section--display-separator > div > div"
+      )
+      ?.innerHTML?.trim() || ""
+  );
 }
 
 function normalizeField(value) {
@@ -343,6 +375,7 @@ async function saveProfile(pool, profile, { insertSql }) {
       normalizeField(profile.reviews),
       normalizeField(profile.rate),
       normalizeField(profile.category),
+      normalizeField(profile.episodeDescription),
     ];
 
     await client.query(insertSql, values);
@@ -363,8 +396,29 @@ async function saveProfile(pool, profile, { insertSql }) {
  */
 async function processProfile(pool, profileRequest, headers, insertConfig) {
   const html = await fetchProfileHtml(profileRequest.url, headers);
-  const extractedProfile = extractProfileFields(html, profileRequest.url);
-  const profile = { ...extractedProfile, searchId: profileRequest.searchId };
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  const extractedProfile = extractProfileFields(document, profileRequest.url);
+
+  const episodeLink = extractEpisodeLink(document, profileRequest.url);
+  let episodeDescription = "";
+
+  if (episodeLink) {
+    try {
+      const episodeHtml = await fetchProfileHtml(episodeLink, headers);
+      episodeDescription = extractEpisodeDescription(episodeHtml);
+    } catch (error) {
+      console.error(
+        `Failed to fetch episode description from ${episodeLink}: ${error.message}`
+      );
+    }
+  }
+
+  const profile = {
+    ...extractedProfile,
+    searchId: profileRequest.searchId,
+    episodeDescription,
+  };
 
   validateProfile(profile, profileRequest.url);
 
