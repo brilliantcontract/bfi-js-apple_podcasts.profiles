@@ -153,13 +153,29 @@ function extractLinksFromDescription(description) {
   const urlRegex1 = /https?:\/\/[^\s"']+/gi;
   const urlRegex2 = /http?:\/\/[^\s"']+/gi;
   const urlRegex3 = /www\.[^\s"']+/gi;
-  const matches = [
+  const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  const mentionRegex = /@[A-Za-z0-9_]+/g;
+  const urlMatches = [
     ...(description.match(urlRegex1) || []),
     ...(description.match(urlRegex2) || []),
     ...(description.match(urlRegex3) || []),
   ];
+  const emailMatches = description.match(emailRegex) || [];
+  const mentionMatches = (description.match(mentionRegex) || []).filter(
+    (mention) => !emailMatches.some((email) => email.includes(mention))
+  );
 
-  return matches.filter((url) => !skipDomains(url)).join("◙");
+  const matches = [...urlMatches, ...emailMatches, ...mentionMatches];
+
+  const filtered = matches.filter((value) => {
+    if (value.startsWith("@") || value.includes("@")) {
+      return true;
+    }
+
+    return !skipDomains(value);
+  });
+
+  return Array.from(new Set(filtered)).join("◙");
 }
 
 function shouldUseScrapeNinja() {
@@ -345,6 +361,24 @@ function extractEpisodeDescription(html) {
   );
 }
 
+function mergeLinkStrings(...linkStrings) {
+  const collected = new Set();
+
+  linkStrings.forEach((value) => {
+    if (typeof value !== "string" || value.trim() === "") {
+      return;
+    }
+
+    value
+      .split("◙")
+      .map((link) => link.trim())
+      .filter((link) => link !== "")
+      .forEach((link) => collected.add(link));
+  });
+
+  return Array.from(collected).join("◙");
+}
+
 function normalizeField(value) {
   const cleaned = cleanText(value);
   return cleaned === "" ? null : cleaned;
@@ -425,6 +459,7 @@ async function processProfile(pool, profileRequest, headers, insertConfig) {
 
   const episodeLinks = extractEpisodeLinks(document, profileRequest.url);
   const episodeDescriptions = [];
+  const episodeDescriptionLinks = [];
 
   for (const episodeLink of episodeLinks) {
     try {
@@ -432,6 +467,10 @@ async function processProfile(pool, profileRequest, headers, insertConfig) {
       const episodeDescription = extractEpisodeDescription(episodeHtml);
       if (episodeDescription) {
         episodeDescriptions.push(episodeDescription);
+        const links = extractLinksFromDescription(episodeDescription);
+        if (links) {
+          episodeDescriptionLinks.push(links);
+        }
       }
     } catch (error) {
       console.error(
@@ -443,6 +482,10 @@ async function processProfile(pool, profileRequest, headers, insertConfig) {
   const profile = {
     ...extractedProfile,
     searchId: profileRequest.searchId,
+    links: mergeLinkStrings(
+      extractedProfile.links,
+      episodeDescriptionLinks.join("◙")
+    ),
     episodeDescription: episodeDescriptions.join("◙"),
   };
 
