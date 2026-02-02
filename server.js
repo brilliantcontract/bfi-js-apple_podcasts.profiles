@@ -150,9 +150,9 @@ function extractLinksFromDescription(description) {
     return "";
   }
 
-  const urlRegex1 = /https?:\/\/[^\s"']+/gi;
-  const urlRegex2 = /http?:\/\/[^\s"']+/gi;
-  const urlRegex3 = /www\.[^\s"']+/gi;
+  const urlRegex1 = /https?:\/\/[^\s"'◙]+/gi;
+  const urlRegex2 = /http?:\/\/[^\s"'◙]+/gi;
+  const urlRegex3 = /www\.[^\s"'◙]+/gi;
   const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
   const mentionRegex = /@[A-Za-z0-9_]+/g;
   const urlMatches = [
