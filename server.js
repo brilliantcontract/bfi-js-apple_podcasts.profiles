@@ -70,7 +70,26 @@ const DEFAULT_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
 };
 
-const EXCLUDED_DOMAINS = ["patreon.com", "speaker.com"];
+  const EXCLUDED_DOMAINS = [
+    "acast.com",
+    "adswizz.com",
+    "amazon.com",
+    "amzn.to",
+    "apple.com",
+    "barnesandnoble.com",
+    "bookshop.org",
+    "books2read.com",
+    "buymeacoffee.com",
+    "buzzsprout.com",
+    "creativecommons.org",
+    "megaphone.fm",
+    "omnystudio.com",
+    "patreon.com",
+    "podcastchoices.com",
+    "redbubble.com",
+    "speaker.com",
+    "spotify.com",
+  ];
 
 function skipDomains(url) {
   if (typeof url !== "string" || url.trim() === "") {
@@ -252,7 +271,7 @@ function parseReviewsAndRate(metadataText) {
 
 function extractProfileFields(document, url) {
   const showName = cleanText(
-    document.querySelector(".headings.svelte-1uuona0 h1")?.textContent || ""
+    document.querySelector("div.container-detail-header div h1 span")?.textContent || ""
   );
   const hostName = cleanText(
     document.querySelector(".headings__subtitles .svelte-123qhuj")?.textContent ||
@@ -338,7 +357,7 @@ function validateProfile(profile, url) {
     throw new Error(`Missing profile URL for profile ${url}`);
   }
 }
-
+ 
 /**
  * @param {import("pg").Pool} pool
  * @returns {Promise<ProfileRequest[]>}
