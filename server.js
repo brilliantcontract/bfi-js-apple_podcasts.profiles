@@ -151,10 +151,12 @@ function extractLinksFromDescription(description) {
   }
 
   const urlRegex1 = /https?:\/\/[^\s"']+/gi;
-  const urlRegex2 = /www\.[^\s"']+/gi;
+  const urlRegex2 = /http?:\/\/[^\s"']+/gi;
+  const urlRegex3 = /www\.[^\s"']+/gi;
   const matches = [
     ...(description.match(urlRegex1) || []),
     ...(description.match(urlRegex2) || []),
+    ...(description.match(urlRegex3) || []),
   ];
 
   return matches.filter((url) => !skipDomains(url)).join("◙");
