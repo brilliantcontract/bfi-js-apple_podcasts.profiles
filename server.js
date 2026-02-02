@@ -288,21 +288,23 @@ function extractProfileFields(document, url) {
   };
 }
 
-function extractEpisodeLink(document, baseUrl) {
-  const rawLink =
-    document
-      .querySelector("div.shelf-content > ol > li:nth-child(1) > div > a[href]")
-      ?.getAttribute("href") || "";
+function extractEpisodeLinks(document, baseUrl) {
+  const rawLinks = Array.from(
+    document.querySelectorAll("div.shelf-content > ol > li > div > a[href]")
+  )
+    .map((link) => link.getAttribute("href") || "")
+    .map((link) => link.trim())
+    .filter((link) => link !== "");
 
-  if (!rawLink.trim()) {
-    return "";
-  }
-
-  try {
-    return new URL(rawLink, baseUrl).toString();
-  } catch (error) {
-    return "";
-  }
+  return rawLinks
+    .map((rawLink) => {
+      try {
+        return new URL(rawLink, baseUrl).toString();
+      } catch (error) {
+        return "";
+      }
+    })
+    .filter((link) => link !== "");
 }
 
 function extractEpisodeDescription(html) {
@@ -400,13 +402,16 @@ async function processProfile(pool, profileRequest, headers, insertConfig) {
   const document = dom.window.document;
   const extractedProfile = extractProfileFields(document, profileRequest.url);
 
-  const episodeLink = extractEpisodeLink(document, profileRequest.url);
-  let episodeDescription = "";
+  const episodeLinks = extractEpisodeLinks(document, profileRequest.url);
+  const episodeDescriptions = [];
 
-  if (episodeLink) {
+  for (const episodeLink of episodeLinks) {
     try {
       const episodeHtml = await fetchProfileHtml(episodeLink, headers);
-      episodeDescription = extractEpisodeDescription(episodeHtml);
+      const episodeDescription = extractEpisodeDescription(episodeHtml);
+      if (episodeDescription) {
+        episodeDescriptions.push(episodeDescription);
+      }
     } catch (error) {
       console.error(
         `Failed to fetch episode description from ${episodeLink}: ${error.message}`
@@ -417,7 +422,7 @@ async function processProfile(pool, profileRequest, headers, insertConfig) {
   const profile = {
     ...extractedProfile,
     searchId: profileRequest.searchId,
-    episodeDescription,
+    episodeDescription: episodeDescriptions.join("◙"),
   };
 
   validateProfile(profile, profileRequest.url);
