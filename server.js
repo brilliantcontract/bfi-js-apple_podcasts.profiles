@@ -90,24 +90,35 @@ const DEFAULT_HEADERS = {
     "spotify.com",
   ];
 
-function skipDomains(url) {
-  if (typeof url !== "string" || url.trim() === "") {
+  if (typeof url !== "string") {
     return false;
   }
 
-  const value = url.trim();
-  const normalized = value.match(/^https?:\/\//i) ? value : `https://${value}`;
-
-  try {
-    const hostname = new URL(normalized).hostname.toLowerCase();
-
-    return EXCLUDED_DOMAINS.some(
-      (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
-    );
-  } catch (error) {
+  const sanitizedUrl = url.trim().replace(/[),.;!?]+$/, "");
+  if (sanitizedUrl === "") {
     return false;
   }
+
+  const parseUrl = (value) => {
+    try {
+      return new URL(value);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const parsedUrl = parseUrl(sanitizedUrl) || parseUrl(`https://${sanitizedUrl}`);
+  if (!parsedUrl) {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+
+  return EXCLUDED_DOMAINS.some(
+    (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+  );
 }
+
 
 async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
