@@ -87,7 +87,6 @@ const DEFAULT_HEADERS = {
     "patreon.com",
     "podcastchoices.com",
     "redbubble.com",
-    "speaker.com",
     "spotify.com",
   ];
 
@@ -327,7 +326,7 @@ function extractProfileFields(document, url) {
 
 function extractEpisodeLinks(document, baseUrl) {
   const rawLinks = Array.from(
-    document.querySelectorAll("div.shelf-content > ol > li > div > a[href]")
+    document.querySelectorAll("div.shelf-content > ol > li:nth-child(1) > div > a[href]")
   )
     .map((link) => link.getAttribute("href") || "")
     .map((link) => link.trim())
