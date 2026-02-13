@@ -70,6 +70,7 @@ const DEFAULT_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
 };
 
+function skipDomains(url) {
   const EXCLUDED_DOMAINS = [
     "acast.com",
     "adswizz.com",
@@ -89,6 +90,7 @@ const DEFAULT_HEADERS = {
     "redbubble.com",
     "spotify.com",
   ];
+
 
   if (typeof url !== "string") {
     return false;
@@ -118,7 +120,6 @@ const DEFAULT_HEADERS = {
     (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
   );
 }
-
 
 async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
