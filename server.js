@@ -91,7 +91,6 @@ function skipDomains(url) {
     "spotify.com",
   ];
 
-
   if (typeof url !== "string") {
     return false;
   }
@@ -124,10 +123,18 @@ function skipDomains(url) {
   }
 
   const hostname = parsedUrl.hostname.toLowerCase();
+  const normalizedCandidateUrl = candidateUrl.toLowerCase();
 
-  return EXCLUDED_DOMAINS.some(
-    (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
-  );
+  return EXCLUDED_DOMAINS.some((domain) => {
+    const normalizedDomain = domain.toLowerCase();
+
+    return (
+      hostname === normalizedDomain ||
+      hostname.endsWith(`.${normalizedDomain}`) ||
+      hostname.includes(normalizedDomain) ||
+      normalizedCandidateUrl.includes(normalizedDomain)
+    );
+  });
 }
 
 
