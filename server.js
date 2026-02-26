@@ -178,7 +178,7 @@ function extractLinksFromDescription(description) {
   if (typeof description !== "string" || description.trim() === "") {
     return "";
   }
-
+console.log(description)
   const urlRegex =
     /(?:https?:\/\/|www\.)[^\s"'◙]+?(?=(?:https?:\/\/|www\.)|[\s"'◙]|$)/gi;
   const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -191,64 +191,16 @@ function extractLinksFromDescription(description) {
 
   const matches = [...urlMatches, ...emailMatches, ...mentionMatches];
 
-  const collected = new Map();
+  const filtered = matches.filter((value) => {
+    if (value.startsWith("@")) {
 
-  matches.forEach((value) => {
-    const normalized = normalizeExtractedLinkValue(value);
-    if (!normalized) {
-      return;
+      return true;
     }
 
-    if (!normalized.startsWith("@") && skipDomains(normalized)) {
-      return;
-    }
-
-    const dedupeKey = normalized.toLowerCase();
-    if (!collected.has(dedupeKey)) {
-      collected.set(dedupeKey, normalized);
-    }
+    return !skipDomains(value);
   });
 
-  return Array.from(collected.values()).join("◙");
-}
-
-function normalizeExtractedLinkValue(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const cleaned = value
-    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
-    .replace(/\\n/g, " ")
-    .trim();
-  if (!cleaned) {
-    return "";
-  }
-
-  if (cleaned.startsWith("@")) {
-    return cleaned;
-  }
-
-  if (cleaned.includes("@") && !cleaned.startsWith("http") && !cleaned.startsWith("www.")) {
-    return cleaned;
-  }
-
-  const urlMatch = cleaned.match(/(?:https?:\/\/|www\.)\S+/i);
-  if (!urlMatch) {
-    return "";
-  }
-
-  let url = urlMatch[0].trim();
-  url = url.replace(/^[([{"'`]+/, "");
-  url = url.split("<")[0].trim();
-  url = url.replace(/(?:\\n|\s)+$/g, "");
-  url = url.replace(/[),.;!?\]}"'`]+$/g, "");
-
-  while (url && /[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]$/u.test(url)) {
-    url = url.slice(0, -1);
-  }
-
-  return url;
+  return Array.from(new Set(filtered)).join("◙");
 }
 
 function shouldUseScrapeNinja() {
@@ -366,11 +318,11 @@ function extractProfileFields(document, url) {
   );
   const hostName = cleanText(
     document.querySelector(".headings__subtitles .svelte-123qhuj")?.textContent ||
-    document.querySelector(".headings.svelte-1uuona0 .subtitle-action.svelte-16t2ez2")?.textContent || ""
+      document.querySelector(".headings.svelte-1uuona0 .subtitle-action.svelte-16t2ez2")?.textContent || ""
   );
   const showDescription = cleanText(
     document.querySelector(".description .truncate-wrapper p")?.textContent ||
-    document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
+      document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
   );
 
   const links = extractLinksFromDescription(showDescription);
@@ -425,18 +377,17 @@ function extractEpisodeDescription(html) {
   const dom = new JSDOM(html);
   const document = dom.window.document;
 
-  return cleanText(
+  return (
     document
       .querySelector(
         "div.section.section--paragraph.svelte-1cj8vg9.section--display-separator > div > div"
       )
-      ?.textContent || ""
+      ?.innerHTML?.trim() || ""
   );
 }
 
-
 function mergeLinkStrings(...linkStrings) {
-  const collected = new Map();
+  const collected = new Set();
 
   linkStrings.forEach((value) => {
     if (typeof value !== "string" || value.trim() === "") {
@@ -445,17 +396,12 @@ function mergeLinkStrings(...linkStrings) {
 
     value
       .split("◙")
-      .map((link) => normalizeExtractedLinkValue(link))
+      .map((link) => link.trim())
       .filter((link) => link !== "")
-      .forEach((link) => {
-        const dedupeKey = link.toLowerCase();
-        if (!collected.has(dedupeKey)) {
-          collected.set(dedupeKey, link);
-        }
-      });
+      .forEach((link) => collected.add(link));
   });
 
-  return Array.from(collected.values()).join("◙");
+  return Array.from(collected).join("◙");
 }
 
 function normalizeField(value) {
@@ -472,7 +418,7 @@ function validateProfile(profile, url) {
     throw new Error(`Missing profile URL for profile ${url}`);
   }
 }
-
+ 
 /**
  * @param {import("pg").Pool} pool
  * @returns {Promise<ProfileRequest[]>}
