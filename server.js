@@ -240,6 +240,7 @@ function normalizeExtractedLinkValue(value) {
 
   let url = urlMatch[0].trim();
   url = url.replace(/^[([{"'`]+/, "");
+  url = url.split("<")[0].trim();
   url = url.replace(/(?:\\n|\s)+$/g, "");
   url = url.replace(/[),.;!?\]}"'`]+$/g, "");
 
@@ -365,11 +366,11 @@ function extractProfileFields(document, url) {
   );
   const hostName = cleanText(
     document.querySelector(".headings__subtitles .svelte-123qhuj")?.textContent ||
-      document.querySelector(".headings.svelte-1uuona0 .subtitle-action.svelte-16t2ez2")?.textContent || ""
+    document.querySelector(".headings.svelte-1uuona0 .subtitle-action.svelte-16t2ez2")?.textContent || ""
   );
   const showDescription = cleanText(
     document.querySelector(".description .truncate-wrapper p")?.textContent ||
-      document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
+    document.querySelector(".section.section--paragraph.svelte-1cj8vg9.section--display-separator .shelf-content > div")?.textContent || ""
   );
 
   const links = extractLinksFromDescription(showDescription);
@@ -424,14 +425,15 @@ function extractEpisodeDescription(html) {
   const dom = new JSDOM(html);
   const document = dom.window.document;
 
-  return (
+  return cleanText(
     document
       .querySelector(
         "div.section.section--paragraph.svelte-1cj8vg9.section--display-separator > div > div"
       )
-      ?.innerHTML?.trim() || ""
+      ?.textContent || ""
   );
 }
+
 
 function mergeLinkStrings(...linkStrings) {
   const collected = new Map();
@@ -470,7 +472,7 @@ function validateProfile(profile, url) {
     throw new Error(`Missing profile URL for profile ${url}`);
   }
 }
- 
+
 /**
  * @param {import("pg").Pool} pool
  * @returns {Promise<ProfileRequest[]>}
