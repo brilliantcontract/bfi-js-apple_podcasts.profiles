@@ -191,16 +191,59 @@ function extractLinksFromDescription(description) {
 
   const matches = [...urlMatches, ...emailMatches, ...mentionMatches];
 
-  const filtered = matches.filter((value) => {
-    if (value.startsWith("@")) {
+  const collected = new Map();
 
-      return true;
+  matches.forEach((value) => {
+    const normalized = normalizeExtractedLinkValue(value);
+    if (!normalized) {
+      return;
     }
 
-    return !skipDomains(value);
+    if (!normalized.startsWith("@") && skipDomains(normalized)) {
+      return;
+    }
+
+    const dedupeKey = normalized.toLowerCase();
+    if (!collected.has(dedupeKey)) {
+      collected.set(dedupeKey, normalized);
+    }
   });
 
-  return Array.from(new Set(filtered)).join("◙");
+  return Array.from(collected.values()).join("◙");
+}
+
+function normalizeExtractedLinkValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const cleaned = value.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.startsWith("@")) {
+    return cleaned;
+  }
+
+  if (cleaned.includes("@") && !cleaned.startsWith("http") && !cleaned.startsWith("www.")) {
+    return cleaned;
+  }
+
+  const urlMatch = cleaned.match(/(?:https?:\/\/|www\.)\S+/i);
+  if (!urlMatch) {
+    return "";
+  }
+
+  let url = urlMatch[0].trim();
+  url = url.replace(/^[([{"'`]+/, "");
+  url = url.replace(/[),.;!?\]}"'`]+$/g, "");
+
+  while (url && /[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]$/u.test(url)) {
+    url = url.slice(0, -1);
+  }
+
+  return url;
 }
 
 function shouldUseScrapeNinja() {
@@ -387,7 +430,7 @@ function extractEpisodeDescription(html) {
 }
 
 function mergeLinkStrings(...linkStrings) {
-  const collected = new Set();
+  const collected = new Map();
 
   linkStrings.forEach((value) => {
     if (typeof value !== "string" || value.trim() === "") {
@@ -396,12 +439,17 @@ function mergeLinkStrings(...linkStrings) {
 
     value
       .split("◙")
-      .map((link) => link.trim())
+      .map((link) => normalizeExtractedLinkValue(link))
       .filter((link) => link !== "")
-      .forEach((link) => collected.add(link));
+      .forEach((link) => {
+        const dedupeKey = link.toLowerCase();
+        if (!collected.has(dedupeKey)) {
+          collected.set(dedupeKey, link);
+        }
+      });
   });
 
-  return Array.from(collected).join("◙");
+  return Array.from(collected.values()).join("◙");
 }
 
 function normalizeField(value) {
