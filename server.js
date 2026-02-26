@@ -217,7 +217,10 @@ function normalizeExtractedLinkValue(value) {
     return "";
   }
 
-  const cleaned = value.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
+  const cleaned = value
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .replace(/\\n/g, " ")
+    .trim();
   if (!cleaned) {
     return "";
   }
@@ -237,6 +240,7 @@ function normalizeExtractedLinkValue(value) {
 
   let url = urlMatch[0].trim();
   url = url.replace(/^[([{"'`]+/, "");
+  url = url.replace(/(?:\\n|\s)+$/g, "");
   url = url.replace(/[),.;!?\]}"'`]+$/g, "");
 
   while (url && /[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]$/u.test(url)) {
