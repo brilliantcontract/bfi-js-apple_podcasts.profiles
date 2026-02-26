@@ -178,16 +178,21 @@ function extractLinksFromDescription(description) {
   if (typeof description !== "string" || description.trim() === "") {
     return "";
   }
-console.log(description)
+  
+  const normalizedDescription = description
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ");
+
   const urlRegex =
-    /(?:https?:\/\/|www\.)[^\s"'◙]+?(?=(?:https?:\/\/|www\.)|[\s"'◙]|$)/gi;
+    /(?:https?:\/\/|www\.)[^\s"'<>◙]+?(?=(?:https?:\/\/|www\.)|[\s"'<>◙]|$)/gi;
   const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
   const mentionRegex = /@[A-Za-z0-9_]+/g;
-  const urlMatches = description.match(urlRegex) || [];
-  const emailMatches = description.match(emailRegex) || [];
-  const mentionMatches = (description.match(mentionRegex) || []).filter(
+  const urlMatches = normalizedDescription.match(urlRegex) || [];
+  const emailMatches = normalizedDescription.match(emailRegex) || [];
+  const mentionMatches = (normalizedDescription.match(mentionRegex) || []).filter(
     (mention) => !emailMatches.some((email) => email.includes(mention))
   );
+
 
   const matches = [...urlMatches, ...emailMatches, ...mentionMatches];
 
